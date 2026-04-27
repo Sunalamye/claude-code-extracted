@@ -1,4 +1,4 @@
-# bun-compiled-extractor
+# claude-code-extracted
 
 [English](#english) | [繁體中文](#繁體中文)
 
@@ -41,8 +41,8 @@ it is irrelevant. Reference:
 ### Install / use
 
 ```bash
-git clone https://github.com/Sunalamye/bun-compiled-extractor.git
-cd bun-compiled-extractor
+git clone https://github.com/Sunalamye/claude-code-extracted.git
+cd claude-code-extracted
 
 # Extract any bun --compile binary
 node scripts/extract.cjs path/to/your-bun-binary out/
@@ -120,8 +120,8 @@ Bun runtime 自己也是用「尾端固定 trailer」來定位 payload：
 ### 安裝 / 使用
 
 ```bash
-git clone https://github.com/Sunalamye/bun-compiled-extractor.git
-cd bun-compiled-extractor
+git clone https://github.com/Sunalamye/claude-code-extracted.git
+cd claude-code-extracted
 
 # 抽出任意 bun --compile binary
 node scripts/extract.cjs path/to/your-bun-binary out/
