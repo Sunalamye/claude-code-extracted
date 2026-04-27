@@ -1,5 +1,10 @@
 # claude-code-extracted
 
+> **僅供學習與研究用途 / For educational and research purposes only.**
+> Not affiliated with or endorsed by Anthropic. Respect the upstream
+> [Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms).
+> 本專案與 Anthropic 無關，使用前請遵守官方商業條款。
+
 [English](#english) | [繁體中文](#繁體中文)
 
 ---
