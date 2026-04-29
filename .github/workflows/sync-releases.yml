@@ -1,0 +1,99 @@
+name: Sync releases with npm
+
+on:
+  schedule:
+    # 00:00 UTC = 08:00 Asia/Taipei (UTC+8)
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: 'Comma-separated versions to force-build (e.g. 2.1.124,2.1.125). Leave empty to auto-detect missing.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Compute missing versions
+        id: diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ inputs.versions }}
+        run: |
+          set -euo pipefail
+          if [ -n "${FORCE:-}" ]; then
+            echo "Using forced versions: $FORCE"
+            missing=$(echo "$FORCE" | tr ',' '\n' | tr -d '[:space:]' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          else
+            npm_versions=$(npm view @anthropic-ai/claude-code-darwin-arm64 versions --json \
+              | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>JSON.parse(d).filter(v=>/^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)&&v!=="0.0.0").forEach(v=>console.log(v)))')
+            release_versions=$(gh release list --limit 1000 --json tagName -q '.[].tagName' | sed 's/^v//')
+            missing=$(comm -23 \
+              <(echo "$npm_versions"     | sort -V -u) \
+              <(echo "$release_versions" | sort -V -u))
+          fi
+          if [ -z "${missing:-}" ]; then
+            echo "Nothing to do."
+            echo "missing=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Missing versions:"
+            echo "$missing"
+            mlist=$(echo "$missing" | tr '\n' ' ' | sed 's/  *$//')
+            echo "missing=$mlist" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build & release each missing version
+        if: steps.diff.outputs.missing != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          failures=()
+          for v in ${{ steps.diff.outputs.missing }}; do
+            echo "::group::Build $v"
+            if ! bash scripts/build-claude-code.sh "$v" darwin-arm64; then
+              echo "::error::Build failed for $v"
+              failures+=("$v")
+              echo "::endgroup::"
+              continue
+            fi
+            tar czf "out/claude-code-${v}-darwin-arm64.tar.gz" -C out "${v}-darwin-arm64"
+            printf '%s\n' \
+              "Node.js-runnable extraction of \`@anthropic-ai/claude-code-darwin-arm64@${v}\`." \
+              "" \
+              "**僅供學習與研究用途 / Educational & research use only.** Not affiliated with Anthropic." \
+              "" \
+              "## Usage" \
+              '```bash' \
+              "tar xzf claude-code-${v}-darwin-arm64.tar.gz" \
+              "cd ${v}-darwin-arm64" \
+              "node ./cli.js --version" \
+              '```' \
+              "" \
+              "Bundled \`node_modules/\` included — no extra install needed (Node.js >= 22; some recent versions need Node 24+ for \`using\` declaration support)." \
+              > /tmp/notes.md
+            if ! gh release create "v${v}" "out/claude-code-${v}-darwin-arm64.tar.gz" \
+                --title "Claude Code ${v} (darwin-arm64, Node-runnable)" \
+                --notes-file /tmp/notes.md; then
+              echo "::warning::Release create failed for $v"
+              failures+=("$v")
+            fi
+            echo "::endgroup::"
+          done
+          if [ ${#failures[@]} -gt 0 ]; then
+            echo "::error::Failed versions: ${failures[*]}"
+            exit 1
+          fi
