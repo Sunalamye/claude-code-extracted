@@ -14,6 +14,11 @@ on:
 permissions:
   contents: write
 
+env:
+  # Versions strictly less than this are skipped — Anthropic shipped its own
+  # Node build through 2.1.112, so this extractor is only useful from 2.1.113.
+  MIN_VERSION: '2.1.113'
+
 jobs:
   sync:
     runs-on: macos-14
@@ -43,6 +48,12 @@ jobs:
             missing=$(comm -23 \
               <(echo "$npm_versions"     | sort -V -u) \
               <(echo "$release_versions" | sort -V -u))
+            # Drop versions below MIN_VERSION (Anthropic shipped its own Node
+            # build through 2.1.112; this extractor only applies from 2.1.113).
+            missing=$(printf '%s\n%s\n' "$MIN_VERSION" "$missing" \
+              | sort -V \
+              | sed -n "/^${MIN_VERSION//./\\.}\$/,\$p" \
+              | tail -n +2)
           fi
           if [ -z "${missing:-}" ]; then
             echo "Nothing to do."
@@ -96,4 +107,17 @@ jobs:
           if [ ${#failures[@]} -gt 0 ]; then
             echo "::error::Failed versions: ${failures[*]}"
             exit 1
+          fi
+
+      - name: Mark highest version as latest
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          highest=$(gh release list --limit 1000 --json tagName -q '.[].tagName' \
+            | sed 's/^v//' | sort -V | tail -1)
+          if [ -n "$highest" ]; then
+            echo "Marking v${highest} as latest"
+            gh release edit "v${highest}" --latest
           fi
